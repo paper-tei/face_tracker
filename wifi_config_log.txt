@@ -1,0 +1,4 @@
+Port: COM4, Baudrate: 115200, SSID: paper, Password: 12345678, Response: 
+Port: COM4, Baudrate: 115200, SSID: paper, Password: 12345678, Response: 
+Port: COM4, Baudrate: 115200, SSID: paper, Password: paperp425, Response: 
+Port: COM15, Baudrate: 115200, SSID: paper, Password: paperp425, Response: 
