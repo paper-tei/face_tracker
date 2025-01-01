@@ -5,6 +5,7 @@
 #include "wifi_connect.h"
 #include "camera_config.h"
 #include "esp_camera.h"
+
 #define PART_BOUNDARY "123456789000000000000987654321"
 #define STREAM_CONTENT_TYPE "multipart/x-mixed-replace;boundary=" PART_BOUNDARY
 #define STREAM_BOUNDARY "\r\n--" PART_BOUNDARY "\r\n"
@@ -29,7 +30,6 @@ esp_err_t root_handler(httpd_req_t* req) {
     httpd_resp_send(req, html_form, HTTPD_RESP_USE_STRLEN);
     return ESP_OK;
 }
-
 
 esp_err_t http_post_handler(httpd_req_t* req) {
     char buf[100];
@@ -93,12 +93,52 @@ esp_err_t config_handler(httpd_req_t* req) {
     esp_restart();
     return ESP_OK;
 }
+
 // favicon.ico 处理函数
 esp_err_t favicon_handler(httpd_req_t* req) {
     // 返回一个空的响应
     httpd_resp_set_type(req, "image/x-icon");
     httpd_resp_send(req, NULL, 0);
     return ESP_OK;
+}
+
+// 视频流处理函数
+esp_err_t stream_handler(httpd_req_t* req) {
+    camera_fb_t* fb = NULL;
+    esp_err_t res = ESP_OK;
+    size_t fb_len = 0;
+
+    res = httpd_resp_set_type(req, STREAM_CONTENT_TYPE);
+    if (res != ESP_OK) {
+        return res;
+    }
+
+    while (true) {
+        fb = esp_camera_fb_get();
+        if (!fb) {
+            ESP_LOGE(TAG, "Camera capture failed");
+            res = ESP_FAIL;
+        }
+        else {
+            fb_len = fb->len;
+            res = httpd_resp_send_chunk(req, STREAM_BOUNDARY, strlen(STREAM_BOUNDARY));
+            if (res == ESP_OK) {
+                char part_buf[64];
+                size_t hlen = snprintf(part_buf, sizeof(part_buf), STREAM_PART, fb_len);
+                res = httpd_resp_send_chunk(req, part_buf, hlen);
+            }
+            if (res == ESP_OK) {
+                res = httpd_resp_send_chunk(req, (const char*)fb->buf, fb_len);
+            }
+            esp_camera_fb_return(fb);
+            ESP_LOGI(TAG, "Streaming frame of size: %u bytes", fb_len);
+        }
+
+        if (res != ESP_OK) {
+            break;
+        }
+    }
+    return res;
 }
 
 // 启动HTTP服务器
@@ -125,53 +165,20 @@ void start_webserver(void) {
         .handler = config_handler,
         .user_ctx = NULL,
     };
+    httpd_register_uri_handler(server, &config_uri);
+
     httpd_uri_t favicon_uri = {
-    .uri = "/favicon.ico",
-    .method = HTTP_GET,
-    .handler = favicon_handler,
-    .user_ctx = NULL,
+        .uri = "/favicon.ico",
+        .method = HTTP_GET,
+        .handler = favicon_handler,
+        .user_ctx = NULL,
     };
     httpd_register_uri_handler(server, &favicon_uri);
-    httpd_register_uri_handler(server, &config_uri);
 
     ESP_LOGI(TAG, "HTTP server started");
 }
-esp_err_t stream_handler(httpd_req_t* req) {
-    camera_fb_t* fb = NULL;
-    esp_err_t res = ESP_OK;
-    size_t fb_len = 0;
 
-    res = httpd_resp_set_type(req, STREAM_CONTENT_TYPE);
-    if (res != ESP_OK) {
-        return res;
-    }
-
-    while (true) {
-        fb = esp_camera_fb_get();
-        if (!fb) {
-            ESP_LOGE(TAG, "Camera capture failed");
-            res = ESP_FAIL;
-        }
-        else {
-            fb_len = fb->len;
-            res = httpd_resp_send_chunk(req, STREAM_BOUNDARY, strlen(STREAM_BOUNDARY));
-            if (res == ESP_OK) {
-                size_t hlen = snprintf((char*)fb->buf, fb->len, STREAM_PART, fb_len);
-                res = httpd_resp_send_chunk(req, (const char*)fb->buf, hlen);
-            }
-            if (res == ESP_OK) {
-                res = httpd_resp_send_chunk(req, (const char*)fb->buf, fb_len);
-            }
-            esp_camera_fb_return(fb);
-            ESP_LOGI(TAG, "Streaming frame of size: %u bytes", fb_len);
-        }
-
-        if (res != ESP_OK) {
-            break;
-        }
-    }
-    return res;
-}
+// 启动视频流服务器
 void start_stream_server() {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     httpd_handle_t stream_httpd = NULL;
