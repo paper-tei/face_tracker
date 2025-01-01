@@ -184,14 +184,15 @@ void start_stream_server() {
     httpd_handle_t stream_httpd = NULL;
 
     if (httpd_start(&stream_httpd, &config) == ESP_OK) {
+        // 将视频流处理函数挂载到根路径 "/"
         httpd_uri_t stream_uri = {
-            .uri = "/stream",
+            .uri = "/",  // 根路径
             .method = HTTP_GET,
             .handler = stream_handler,
             .user_ctx = NULL
         };
         httpd_register_uri_handler(stream_httpd, &stream_uri);
-        ESP_LOGI(TAG, "Stream server started at /stream");
+        ESP_LOGI(TAG, "Stream server started at root path (/)");
     }
     else {
         ESP_LOGE(TAG, "Failed to start stream server");
