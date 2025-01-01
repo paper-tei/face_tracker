@@ -3,6 +3,13 @@
 #include "esp_http_server.h"
 #include "nvs_flash.h"
 #include "wifi_connect.h"
+#include "camera_config.h"
+#include "esp_camera.h"
+#define PART_BOUNDARY "123456789000000000000987654321"
+#define STREAM_CONTENT_TYPE "multipart/x-mixed-replace;boundary=" PART_BOUNDARY
+#define STREAM_BOUNDARY "\r\n--" PART_BOUNDARY "\r\n"
+#define STREAM_PART "Content-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n"
+
 #define TAG "HTTP_SERVER"
 
 // HTTP根页面处理函数
@@ -128,4 +135,58 @@ void start_webserver(void) {
     httpd_register_uri_handler(server, &config_uri);
 
     ESP_LOGI(TAG, "HTTP server started");
+}
+esp_err_t stream_handler(httpd_req_t* req) {
+    camera_fb_t* fb = NULL;
+    esp_err_t res = ESP_OK;
+    size_t fb_len = 0;
+
+    res = httpd_resp_set_type(req, STREAM_CONTENT_TYPE);
+    if (res != ESP_OK) {
+        return res;
+    }
+
+    while (true) {
+        fb = esp_camera_fb_get();
+        if (!fb) {
+            ESP_LOGE(TAG, "Camera capture failed");
+            res = ESP_FAIL;
+        }
+        else {
+            fb_len = fb->len;
+            res = httpd_resp_send_chunk(req, STREAM_BOUNDARY, strlen(STREAM_BOUNDARY));
+            if (res == ESP_OK) {
+                size_t hlen = snprintf((char*)fb->buf, fb->len, STREAM_PART, fb_len);
+                res = httpd_resp_send_chunk(req, (const char*)fb->buf, hlen);
+            }
+            if (res == ESP_OK) {
+                res = httpd_resp_send_chunk(req, (const char*)fb->buf, fb_len);
+            }
+            esp_camera_fb_return(fb);
+            ESP_LOGI(TAG, "Streaming frame of size: %u bytes", fb_len);
+        }
+
+        if (res != ESP_OK) {
+            break;
+        }
+    }
+    return res;
+}
+void start_stream_server() {
+    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+    httpd_handle_t stream_httpd = NULL;
+
+    if (httpd_start(&stream_httpd, &config) == ESP_OK) {
+        httpd_uri_t stream_uri = {
+            .uri = "/stream",
+            .method = HTTP_GET,
+            .handler = stream_handler,
+            .user_ctx = NULL
+        };
+        httpd_register_uri_handler(stream_httpd, &stream_uri);
+        ESP_LOGI(TAG, "Stream server started at /stream");
+    }
+    else {
+        ESP_LOGE(TAG, "Failed to start stream server");
+    }
 }

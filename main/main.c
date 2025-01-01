@@ -17,6 +17,12 @@
 
 
 void app_main(void) {
+    if (heap_caps_get_free_size(MALLOC_CAP_SPIRAM) > 0) {
+        ESP_LOGE(TAG, "PSRAM is available. Free PSRAM: %d bytes\n", heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+    }
+    else {
+        ESP_LOGE(TAG, "PSRAM is not available on this module.\n");
+    }
     // 初始化 NVS（非易失性存储，用于保存 Wi-Fi 配置等）
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
@@ -45,13 +51,17 @@ void app_main(void) {
     }
 
     // 可选：如果需要摄像头功能，可以在此处初始化摄像头
-    /*
+
     ESP_LOGI(TAG, "Initializing Camera...");
     if (camera_init() != ESP_OK) {
         ESP_LOGE(TAG, "Camera initialization failed!");
         return;
     }
-    */
+    // 启动推流服务器
+    ESP_LOGI(TAG, "Starting stream server...");
+    start_stream_server();
+    capture_image_and_print();
+
 
     ESP_LOGI(TAG, "System initialization complete. Ready for operation.");
 }
