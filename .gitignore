@@ -1,0 +1,38 @@
+# 忽略 build 目录（编译产物）
+build/
+
+# 忽略 VSCode 相关配置
+.vscode/
+*.code-workspace
+
+# 忽略 CMake 的中间文件和缓存
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+compile_commands.json
+Makefile
+
+# 忽略 ESP-IDF 编译生成的日志
+*.log
+
+# 忽略 NVS 分区生成的文件
+partition_table/*.bin
+partition_table/*.csv
+
+# 忽略 sdkconfig 文件的备份
+sdkconfig.old
+sdkconfig.defaults
+sdkconfig.ci
+
+# 忽略 Python 的临时文件
+*.pyc
+*.pyo
+__pycache__/
+
+# 忽略其他临时文件
+*.tmp
+*.swp
+*.DS_Store
+*.~*
+
+# 如果有额外的文件夹或文件需要忽略，可以按需添加
