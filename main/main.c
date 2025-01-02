@@ -17,7 +17,7 @@
 #include "wifi_connect.h"
 #include "wifi_ap.h"
 #include "http_server.h"
-
+#include "usb_stream.h"
 // 局域网 IP 打印任务
 void print_ip_task(void* pvParameters) {
     esp_netif_t* netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
@@ -38,9 +38,28 @@ void print_ip_task(void* pvParameters) {
     }
 }
 
+
+
 void app_main(void) {
-    esp_log_level_set("*", ESP_LOG_WARN); // 仅打印警告及以上日志
-    //esp_log_level_set(TAG, ESP_LOG_INFO); // 打印 info 及以上级别的日志
+    //esp_log_level_set("*", ESP_LOG_WARN); // 仅打印警告及以上日志
+    esp_log_level_set(TAG, ESP_LOG_INFO); // 打印 info 及以上级别的日志
+    // 可选：如果需要摄像头功能，可以在此处初始化摄像头
+    // 配置传感器
+    setupCameraSensor();
+    ESP_LOGI(TAG, "Initializing Camera...");
+    if (camera_init() != ESP_OK) {
+        ESP_LOGE(TAG, "Camera initialization failed!");
+        return;
+    }
+
+#ifdef USB
+    setup_uart();
+    while (1) {
+        send_frame();   // 发送图像帧
+        //ESP_LOGE(TAG, "Camera send");
+        vTaskDelay(pdMS_TO_TICKS(100)); // 延迟 100ms (可根据帧率需求调整)
+    }
+#endif // USB
 #ifdef WIFI
     if (heap_caps_get_free_size(MALLOC_CAP_SPIRAM) > 0) {
         ESP_LOGE(TAG, "PSRAM is available. Free PSRAM: %d bytes\n", heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
@@ -48,6 +67,7 @@ void app_main(void) {
     else {
         ESP_LOGE(TAG, "PSRAM is not available on this module.\n");
     }
+
     // 初始化 NVS（非易失性存储，用于保存 Wi-Fi 配置等）
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
@@ -76,15 +96,6 @@ void app_main(void) {
     }
 
 
-
-    // 可选：如果需要摄像头功能，可以在此处初始化摄像头
-    // 配置传感器
-    setupCameraSensor();
-    ESP_LOGI(TAG, "Initializing Camera...");
-    if (camera_init() != ESP_OK) {
-        ESP_LOGE(TAG, "Camera initialization failed!");
-        return;
-    }
     // 启动推流服务器
     ESP_LOGI(TAG, "Starting stream server...");
     start_stream_server();

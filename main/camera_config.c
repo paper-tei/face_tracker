@@ -23,13 +23,13 @@ camera_config_t get_camera_config(void) {
         .pin_vsync = CAM_PIN_VSYNC,
         .pin_href = CAM_PIN_HREF,
         .pin_pclk = CAM_PIN_PCLK,
-        .xclk_freq_hz = 20000000,       // 将 XCLK 频率设置为 20MHz
+        .xclk_freq_hz = 24000000,       // 将 XCLK 频率设置为 24MHz
         #ifdef ESP32CAM
         .pixel_format = PIXFORMAT_JPEG, // 使用 JPEG 格式
         .fb_location = CAMERA_FB_IN_DRAM,
         .frame_size = FRAMESIZE_240X240,  // 降低分辨率到 240x240
-        .jpeg_quality = 9,             // 调高 JPEG 压缩比（默认值是 12，越高占用内存越少）
-        .fb_count = 2                  // 减少帧缓冲区数到 2
+        .jpeg_quality = 12,             // 调高 JPEG 压缩比（默认值是 12，越高占用内存越少）
+        .fb_count = 3                  // 减少帧缓冲区数到 2
         #endif 
 
         #ifdef ESP32S3CAM
@@ -46,6 +46,7 @@ camera_config_t get_camera_config(void) {
 // 初始化摄像头
 esp_err_t camera_init() {
     camera_config_t config = get_camera_config();
+
     esp_err_t err = esp_camera_init(&config);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Camera init failed: 0x%x", err);
@@ -73,6 +74,12 @@ void setupCameraSensor() {
 
     // 设置图像特效为灰度模式
     camera_sensor->set_special_effect(camera_sensor, 2); // 特效模式：灰度图像
+
+    // 设置 PLL 倍频为 2 倍
+    camera_sensor->set_reg(camera_sensor, 0x6B, 0xFF, 0xCA); // DBLV 寄存器：2 倍频
+
+    // 设置 CLKRC 为不分频
+    camera_sensor->set_reg(camera_sensor, 0x11, 0xFF, 0x00); // CLKRC 寄存器：不分频
 
     ESP_LOGD(TAG, "Camera sensor setup complete!");
 }
