@@ -1,66 +1,53 @@
-#define WIDTH 240
-#define HEIGHT 240
+#include "driver/usb_serial_jtag.h"
+#include "esp_vfs_usb_serial_jtag.h"
+#include "esp_vfs_dev.h"
+#include <fcntl.h>
 #include "esp_camera.h"
-#include "esp_timer.h"
-#include "driver/uart.h"
-#define UART_NUM UART_NUM_0  // 使用 UART0
-#define TXD_PIN 1            // TX 引脚
-#define RXD_PIN 3            // RX 引脚
-// 创建 RGB565 格式的黑色图像
-uint8_t black_image[WIDTH * HEIGHT * 2] = { 0 }; // 每个像素 2 字节
+#include "esp_log.h"
+#include <string.h>
+#define ETVR_HEADER       "\xFF\xA0"
+#define ETVR_HEADER_FRAME "\xFF\xA1"
 
-void setup_uart() {
-    const uart_config_t uart_config = {
-        .baud_rate = 3000000,                // 波特率 3 Mbps
-        .data_bits = UART_DATA_8_BITS,
-        .parity = UART_PARITY_DISABLE,
-        .stop_bits = UART_STOP_BITS_1,
-        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
-    };
+#define USB_SEND_CHUNK_SIZE   64         // USB 单次发送的最大字节数
 
-    // 配置 UART 参数
-    uart_param_config(UART_NUM, &uart_config);
+static const char* TAG = "USB_STREAM";
 
-    // 设置 UART 的 TX 和 RX 引脚
-    uart_set_pin(UART_NUM, TXD_PIN, RXD_PIN, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+void send_frame_via_usb(const uint8_t* buf, size_t len) {
+    uint8_t len_bytes[2];
 
-    // 安装 UART 驱动，设置发送缓冲区大小为 1024 字节
-    uart_driver_install(UART_NUM, 1024, 0, 0, NULL, 0);
-}
-// 模拟黑色帧缓冲区
-camera_fb_t simulate_black_frame() {
-    static uint8_t black_image[WIDTH * HEIGHT * 2] = { 0 }; // 模拟的黑色图像缓冲区
-    camera_fb_t fb;
-    fb.buf = black_image;        // 图像数据指针
-    fb.len = sizeof(black_image); // 图像数据长度
-    fb.width = WIDTH;            // 图像宽度
-    fb.height = HEIGHT;          // 图像高度
-    fb.format = PIXFORMAT_RGB565; // 使用 RGB565 格式
-    return fb;
+    // 发送帧头
+    usb_serial_jtag_write_bytes(ETVR_HEADER, 2, portMAX_DELAY);
+    usb_serial_jtag_write_bytes(ETVR_HEADER_FRAME, 2, portMAX_DELAY);
+
+    // 计算并发送帧长度（低位在前，高位在后）
+    len_bytes[0] = len & 0xFF;           // 长度低 8 位
+    len_bytes[1] = (len >> 8) & 0xFF;    // 长度高 8 位
+    usb_serial_jtag_write_bytes(len_bytes, 2, portMAX_DELAY);
+
+    // 分块发送帧数据
+    size_t sent = 0;
+    while (sent < len) {
+        size_t to_send = (len - sent > USB_SEND_CHUNK_SIZE) ? USB_SEND_CHUNK_SIZE : (len - sent);
+        usb_serial_jtag_write_bytes(buf + sent, to_send, portMAX_DELAY);
+        sent += to_send;
+    }
 }
 
-void send_frame() {
-    // 获取摄像头帧
+void send_camera_frame() {
+
+    // 从摄像头获取帧数据
     camera_fb_t* fb = esp_camera_fb_get();
     if (!fb) {
-        printf("Camera capture failed\n");
+        ESP_LOGE(TAG, "Failed to get camera frame");
         return;
     }
 
-    // 帧头
-    const uint8_t header[] = { 0xFF, 0xA0, 0xFF, 0xA1 }; // ETVR_HEADER + ETVR_HEADER_FRAME
-    uart_write_bytes(UART_NUM, (const char*)header, sizeof(header));
+    // 打印帧信息
+    ESP_LOGI(TAG, "Sending frame of size %d bytes", fb->len);
 
-    // 数据长度
-    uint16_t len = fb->len;  // 图像数据长度
-    uint8_t len_bytes[2];
-    len_bytes[0] = len & 0xFF;            // 低字节
-    len_bytes[1] = (len >> 8) & 0xFF;     // 高字节
-    uart_write_bytes(UART_NUM, (const char*)len_bytes, 2);
+    // 通过 USB 发送帧数据
+    send_frame_via_usb(fb->buf, fb->len);
 
-    // 图像数据
-    uart_write_bytes(UART_NUM, (const char*)fb->buf, fb->len);
-
-    // 释放帧缓冲
+    // 释放帧缓冲区
     esp_camera_fb_return(fb);
 }

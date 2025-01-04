@@ -1,7 +1,7 @@
 #include "camera_config.h"
 #include "esp_camera.h"
 #include "esp_log.h"
-
+#include "config.h"
 #define TAG "CAMERA_CONFIG"
 
 camera_config_t get_camera_config(void) {
@@ -23,7 +23,12 @@ camera_config_t get_camera_config(void) {
         .pin_vsync = CAM_PIN_VSYNC,
         .pin_href = CAM_PIN_HREF,
         .pin_pclk = CAM_PIN_PCLK,
-        .xclk_freq_hz = 24000000,       // 将 XCLK 频率设置为 24MHz
+        #ifdef WIFI
+        .xclk_freq_hz = 10000000,       // 将 XCLK 频率设置为 24MHz
+        #endif
+        #ifdef USB
+        .xclk_freq_hz = 24000000,       // 将 XCLK 频率设置为 10MHz
+        #endif
         #ifdef ESP32CAM
         .pixel_format = PIXFORMAT_JPEG, // 使用 JPEG 格式
         .fb_location = CAMERA_FB_IN_DRAM,
@@ -33,7 +38,7 @@ camera_config_t get_camera_config(void) {
         #endif 
 
         #ifdef ESP32S3CAM
-        .xclk_freq_hz = 20000000,      // XCLK 频率为 20MHz
+        .fb_location = CAMERA_FB_IN_PSRAM,  // 使用 PSRAM 存储帧数据
         .pixel_format = PIXFORMAT_JPEG,// 使用 JPEG 格式
         .frame_size = FRAMESIZE_240X240,// 分辨率 240x240
         .jpeg_quality = 12,            // JPEG 压缩质量

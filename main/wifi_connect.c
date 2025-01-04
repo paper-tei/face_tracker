@@ -65,7 +65,7 @@ static bool wifi_init_static_mode() {
 }
 #endif
 
-#ifndef STATIC_WIFI_SSID
+
 // 从 NVS 读取 Wi-Fi 配置的实现
 bool read_wifi_config_from_nvs(wifi_config_t* wifi_config) {
     nvs_handle_t nvs;
@@ -98,6 +98,7 @@ bool read_wifi_config_from_nvs(wifi_config_t* wifi_config) {
     ESP_LOGW(TAG, "No Wi-Fi config found in NVS");
     return false;
 }
+
 // AP 模式初始化
 static void wifi_init_ap_mode() {
     cleanup_netif("WIFI_AP_DEF");
@@ -127,7 +128,7 @@ static void wifi_init_ap_mode() {
     ESP_ERROR_CHECK(esp_wifi_start());
     ESP_LOGW(TAG, "Wi-Fi AP started. SSID:%s", ap_config.ap.ssid);
 }
-#endif
+
 
 bool wifi_init_sta_mode() {
     wifi_config_t wifi_config = { 0 };
