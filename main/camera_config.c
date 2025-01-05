@@ -24,7 +24,7 @@ camera_config_t get_camera_config(void) {
         .pin_href = CAM_PIN_HREF,
         .pin_pclk = CAM_PIN_PCLK,
         #ifdef WIFI
-        .xclk_freq_hz = 10000000,       // 将 XCLK 频率设置为 24MHz
+        .xclk_freq_hz = 24000000,       // 将 XCLK 频率设置为 24MHz
         #endif
         #ifdef USB
         .xclk_freq_hz = 24000000,       // 将 XCLK 频率设置为 10MHz

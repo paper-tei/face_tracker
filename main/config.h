@@ -8,5 +8,5 @@
 // extern const char* STATIC_WIFI_SSID;
 // extern const char* STATIC_WIFI_PASS;
 // #define STATIC_WIFI_SSID "paper"
-// #define STATIC_WIFI_PASS "paperp425"
+// #define STATIC_WIFI_PASS "paperpaper"
 #endif // CONFIG_H
