@@ -42,7 +42,7 @@ camera_config_t get_camera_config(void) {
         .pixel_format = PIXFORMAT_JPEG,// 使用 JPEG 格式
         .frame_size = FRAMESIZE_240X240,// 分辨率 240x240
         .jpeg_quality = 5,            // JPEG 压缩质量
-        .fb_count = 5,                  // 帧缓冲区数
+        .fb_count = 2,                  // 帧缓冲区数
         .grab_mode = CAMERA_GRAB_WHEN_EMPTY // 始终抓取最新帧
         #endif
     };

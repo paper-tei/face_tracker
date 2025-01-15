@@ -22,6 +22,8 @@
 #include "driver/usb_serial_jtag.h"
 #include "esp_sleep.h"
 #include <math.h>
+#include "mdns.h"
+
 #define MIN_RSSI -100  // 最弱信号（dBm）
 #define MAX_RSSI -30      // 最强信号（dBm）
 extern long long pow_off;
@@ -67,6 +69,28 @@ void print_ip_task(void* pvParameters) {
             if (!wifi_connected) {
                 printf("Wi-Fi 已连接\n");
                 wifi_connected = true;  // 更新标记
+                ESP_LOGI(TAG, "Initializing mDNS...");
+
+                // 初始化 mDNS 服务
+                esp_err_t mdns_ret = mdns_init();
+                if (mdns_ret != ESP_OK) {
+                    ESP_LOGE(TAG, "mDNS initialization failed: %s", esp_err_to_name(mdns_ret));
+                    return;
+                }
+                esp_err_t err = mdns_hostname_set("paper");
+                if (err != ESP_OK) {
+                    ESP_LOGE(TAG, "Failed to set mDNS hostname: %s", esp_err_to_name(err));
+                    return;
+                }
+                ESP_LOGI(TAG, "mDNS hostname set to 'paper.local'");
+                // 设置服务（如 HTTP 服务）
+                esp_err_t service_ret = mdns_service_add("ESP32 Stream Server", "_http", "_tcp", 80, NULL, 0);
+                if (service_ret != ESP_OK) {
+                    ESP_LOGE(TAG, "Failed to add mDNS service: %s", esp_err_to_name(service_ret));
+                    return;
+                }
+                ESP_LOGI(TAG, "mDNS service '_http' on port 80 registered successfully");
+
             }
             snprintf(ip_string, sizeof(ip_string), IPSTR, IP2STR(&ip_info.ip));
             printf("IP Address:  http://%s\n", ip_string);
@@ -105,8 +129,8 @@ void print_ip_task(void* pvParameters) {
 
 void app_main(void) {
 
-    esp_log_level_set("*", ESP_LOG_WARN); // 仅打印警告及以上日志
-    //esp_log_level_set(TAG, ESP_LOG_INFO); // 打印 info 及以上级别的日志
+    //esp_log_level_set("*", ESP_LOG_WARN); // 仅打印警告及以上日志
+    esp_log_level_set(TAG, ESP_LOG_INFO); // 打印 info 及以上级别的日志
 
 
     // 可选：如果需要摄像头功能，可以在此处初始化摄像头
