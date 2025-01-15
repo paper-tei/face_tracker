@@ -32,9 +32,9 @@ void send_frame_via_usb(const uint8_t* buf, size_t len) {
         sent += to_send;
     }
 }
-
+extern long long pow_off;
 void send_camera_frame() {
-
+    pow_off = 0;
     // 从摄像头获取帧数据
     camera_fb_t* fb = esp_camera_fb_get();
     if (!fb) {

@@ -101,7 +101,7 @@ esp_err_t favicon_handler(httpd_req_t* req) {
     httpd_resp_send(req, NULL, 0);
     return ESP_OK;
 }
-
+long long pow_off = 0;
 // 视频流处理函数
 esp_err_t stream_handler(httpd_req_t* req) {
     camera_fb_t* fb = NULL;
@@ -120,6 +120,7 @@ esp_err_t stream_handler(httpd_req_t* req) {
             res = ESP_FAIL;
         }
         else {
+            pow_off = 0;
             fb_len = fb->len;
             res = httpd_resp_send_chunk(req, STREAM_BOUNDARY, strlen(STREAM_BOUNDARY));
             if (res == ESP_OK) {

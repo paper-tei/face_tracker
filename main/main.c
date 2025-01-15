@@ -9,6 +9,7 @@
 #include "freertos/task.h"
 #include "esp_system.h"
 #include "esp_flash.h"
+#include "esp_wifi.h"  // 包含 Wi-Fi 相关的头文件
 #include "esp_log.h"
 #include "nvs_flash.h"
 #include "esp_netif.h"
@@ -19,9 +20,28 @@
 #include "http_server.h"
 #include "usb_stream.h"
 #include "driver/usb_serial_jtag.h"
+#include "esp_sleep.h"
+#include <math.h>
+#define MIN_RSSI -100  // 最弱信号（dBm）
+#define MAX_RSSI -30      // 最强信号（dBm）
+extern long long pow_off;
+// 将RSSI转换为百分比（线性映射）
+int rssi_to_percentage(int rssi) {
+    if (rssi <= -70) {
+        return 0;  // 最弱信号 (-70 dBm)
+    }
+    else if (rssi >= -30) {
+        return 100;  // 最强信号 (-30 dBm)
+    }
+    else {
+        // 使用线性公式进行转换
+        return (int)((rssi + 70) * 100 / 40);  // 线性映射
+    }
+}
 // 局域网 IP 打印任务
-
 void print_ip_task(void* pvParameters) {
+
+
     esp_netif_t* netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
     if (!netif) {
         printf("Failed to get netif handle for station mode.\n");
@@ -34,7 +54,14 @@ void print_ip_task(void* pvParameters) {
 
     while (true) {
         esp_netif_ip_info_t ip_info;
-
+        pow_off++;
+        //关机倒计时
+        printf("%llds后关机\n", 600 - pow_off * 3);
+        if (pow_off > 200) {
+            ESP_LOGI("SHUTDOWN", "Entering deep sleep...");
+            vTaskDelay(pdMS_TO_TICKS(100));
+            esp_deep_sleep_start();
+        }
         if (esp_netif_get_ip_info(netif, &ip_info) == ESP_OK && ip_info.ip.addr != 0) {
             // Wi-Fi 已连接且获取到有效 IP
             if (!wifi_connected) {
@@ -42,7 +69,17 @@ void print_ip_task(void* pvParameters) {
                 wifi_connected = true;  // 更新标记
             }
             snprintf(ip_string, sizeof(ip_string), IPSTR, IP2STR(&ip_info.ip));
-            printf("IP Address: %s\n", ip_string);
+            printf("IP Address:  http://%s\n", ip_string);
+
+            // 获取 Wi-Fi 信号强度
+            wifi_ap_record_t ap_info;
+            if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
+                int rssi_percentage = rssi_to_percentage(ap_info.rssi);  // 转换为百分比
+                printf("Wi-Fi 信号强度: %d dBm (%d%%)\n", ap_info.rssi, rssi_percentage);  // 打印信号强度及百分比
+            }
+            else {
+                printf("无法获取信号强度\n");
+            }
         }
         else {
 #ifndef STATIC_WIFI_SSID
@@ -56,24 +93,21 @@ void print_ip_task(void* pvParameters) {
 #ifdef STATIC_WIFI_SSID
             if (!wifi_connected) {
                 printf("固件WIFI配置错误,请重新编译固件或者烧录AP配网版本固件\n");
-
             }
             wifi_connected = false;  // 更新标记
 #endif
         }
-        UBaseType_t remaining_stack = uxTaskGetStackHighWaterMark(NULL);
-        printf("Remaining stack: %d bytes\n", remaining_stack);
-
-        vTaskDelay(pdMS_TO_TICKS(2000)); // 延迟 2 秒
+        vTaskDelay(pdMS_TO_TICKS(3000)); // 延迟 1 秒
     }
 }
 
 
 
 void app_main(void) {
-    //esp_log_level_set("*", ESP_LOG_WARN); // 仅打印警告及以上日志
-    esp_log_level_set(TAG, ESP_LOG_INFO); // 打印 info 及以上级别的日志
-    //vTaskDelay(pdMS_TO_TICKS(1000)); // 延迟 1 秒
+
+    esp_log_level_set("*", ESP_LOG_WARN); // 仅打印警告及以上日志
+    //esp_log_level_set(TAG, ESP_LOG_INFO); // 打印 info 及以上级别的日志
+
 
     // 可选：如果需要摄像头功能，可以在此处初始化摄像头
     // 配置传感器
@@ -82,12 +116,13 @@ void app_main(void) {
         ESP_LOGE(TAG, "Camera initialization failed!");
         return;
     }
+    vTaskDelay(pdMS_TO_TICKS(100)); // 延迟 1 秒
     setupCameraSensor();
     //capture_image_and_print();
 #ifdef USB
     usb_serial_jtag_driver_config_t usb_serial_jtag_config = {
-        .rx_buffer_size = 4096, // RX 缓冲区大小
-        .tx_buffer_size = 4096 * 4  // TX 缓冲区大小
+        .rx_buffer_size = 4096 * 10, // RX 缓冲区大小
+        .tx_buffer_size = 4096 * 10  // TX 缓冲区大小
     };
 
     // 安装 USB-Serial-JTAG 驱动
@@ -97,21 +132,14 @@ void app_main(void) {
         return;
     }
     ESP_LOGI(TAG, "USB-Serial-JTAG driver installed successfully");
+    // 启动打印 IP 地址的任务
     while (1) {
-
         send_camera_frame();
     }
 
 
 #endif // USB
 #ifdef WIFI
-    if (heap_caps_get_free_size(MALLOC_CAP_SPIRAM) > 0) {
-        ESP_LOGE(TAG, "PSRAM is available. Free PSRAM: %d bytes\n", heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
-    }
-    else {
-        ESP_LOGE(TAG, "PSRAM is not available on this module.\n");
-    }
-
     // 初始化 NVS（非易失性存储，用于保存 Wi-Fi 配置等）
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
@@ -143,9 +171,10 @@ void app_main(void) {
     // 启动推流服务器
     ESP_LOGI(TAG, "Starting stream server...");
     start_stream_server();
+    // 初始化客户端超时定时器
 
     // 启动打印 IP 地址的任务
-    //xTaskCreate(print_ip_task, "Print_IP_Task", 4096, NULL, 5, NULL);
+    xTaskCreate(print_ip_task, "Print_IP_Task", 4096, NULL, 5, NULL);
     ESP_LOGI(TAG, "System initialization complete. Ready for operation.");
 
 #endif // WIFI

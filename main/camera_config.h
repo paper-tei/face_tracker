@@ -38,13 +38,13 @@
 #define CAM_PIN_D5      18   // 数据引脚 Y7
 #define CAM_PIN_D4      12   // 数据引脚 Y6
 #define CAM_PIN_D3      10   // 数据引脚 Y5
-#define CAM_PIN_D1      9    // 数据引脚 Y3
 #define CAM_PIN_D2      8    // 数据引脚 Y4
+#define CAM_PIN_D1      9    // 数据引脚 Y3
 #define CAM_PIN_D0      11   // 数据引脚 Y2
 
 #define CAM_PIN_VSYNC   6    // 垂直同步信号，连接到 GPIO6
 #define CAM_PIN_HREF    7    // 水平参考信号，连接到 GPIO7
-#define CAM_PIN_PCLK    3   // 像素时钟，连接到 GPIO13
+#define CAM_PIN_PCLK    3   // 像素时钟，连接到 GPIO3
 
 #endif // DEBUG
 camera_config_t get_camera_config(void);
