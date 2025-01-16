@@ -46,13 +46,15 @@ camera_config_t get_camera_config(void) {
         .grab_mode = CAMERA_GRAB_WHEN_EMPTY // 始终抓取最新帧
         #endif
     };
+    esp_rom_delay_us(100); // 延迟 1ms
     return config;
 }
 
 // 初始化摄像头
 esp_err_t camera_init() {
+    esp_rom_delay_us(100); // 延迟 1ms
     camera_config_t config = get_camera_config();
-    esp_rom_delay_us(1000); // 延迟 1ms
+    esp_rom_delay_us(100); // 延迟 1ms
     esp_err_t err = esp_camera_init(&config);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Camera init failed: 0x%x", err);

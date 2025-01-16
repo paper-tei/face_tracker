@@ -94,7 +94,7 @@ void print_ip_task(void* pvParameters) {
             }
             snprintf(ip_string, sizeof(ip_string), IPSTR, IP2STR(&ip_info.ip));
             printf("IP Address:  http://%s\n", ip_string);
-
+            printf("IP Address:  http://paper.local\n");
             // 获取 Wi-Fi 信号强度
             wifi_ap_record_t ap_info;
             if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
@@ -129,8 +129,8 @@ void print_ip_task(void* pvParameters) {
 
 void app_main(void) {
 
-    //esp_log_level_set("*", ESP_LOG_WARN); // 仅打印警告及以上日志
-    esp_log_level_set(TAG, ESP_LOG_INFO); // 打印 info 及以上级别的日志
+    esp_log_level_set("*", ESP_LOG_WARN); // 仅打印警告及以上日志
+    //esp_log_level_set(TAG, ESP_LOG_INFO); // 打印 info 及以上级别的日志
 
 
     // 可选：如果需要摄像头功能，可以在此处初始化摄像头
@@ -195,7 +195,6 @@ void app_main(void) {
     // 启动推流服务器
     ESP_LOGI(TAG, "Starting stream server...");
     start_stream_server();
-    // 初始化客户端超时定时器
 
     // 启动打印 IP 地址的任务
     xTaskCreate(print_ip_task, "Print_IP_Task", 4096, NULL, 5, NULL);
