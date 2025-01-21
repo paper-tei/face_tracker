@@ -14,6 +14,7 @@ Makefile
 
 # 忽略 ESP-IDF 编译生成的日志
 *.log
+*.bin
 
 # 忽略 NVS 分区生成的文件
 partition_table/*.bin
