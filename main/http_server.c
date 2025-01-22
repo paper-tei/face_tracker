@@ -12,11 +12,11 @@
 #define STREAM_BOUNDARY "\r\n--" PART_BOUNDARY "\r\n"
 #define STREAM_PART "Content-Type: image/jpeg\r\nContent-Length: %u\r\nX-Timestamp: %lld.%06ld\r\n\r\n"
 
-
-
 #define TAG "HTTP_SERVER"
+
 // 替代 millis() 宏定义
 #define millis() (esp_timer_get_time() / 1000)
+
 // HTTP根页面处理函数
 esp_err_t root_handler(httpd_req_t* req) {
     const char* html_form =
@@ -35,12 +35,21 @@ esp_err_t root_handler(httpd_req_t* req) {
     return ESP_OK;
 }
 
+// 配置Wi-Fi处理函数
 esp_err_t config_handler(httpd_req_t* req) {
     char buf[100];
-    int ret = httpd_req_recv(req, buf, sizeof(buf));
+    int ret = httpd_req_recv(req, buf, sizeof(buf) - 1); // 保留空间存放 '\0'
     if (ret <= 0) {
         httpd_resp_send_500(req);
         return ESP_FAIL;
+    }
+    buf[ret] = '\0'; // 确保字符串以 '\0' 结尾
+
+    // 移除尾随换行符或空格
+    char* end = buf + ret - 1;
+    while (end > buf && (*end == '\n' || *end == '\r' || *end == ' ')) {
+        *end = '\0';
+        end--;
     }
 
     char ssid[32] = { 0 }, pass[64] = { 0 };
@@ -51,21 +60,38 @@ esp_err_t config_handler(httpd_req_t* req) {
 
     // 保存Wi-Fi配置
     nvs_handle_t nvs;
-    nvs_open("wifi_config", NVS_READWRITE, &nvs);
-    nvs_set_str(nvs, "ssid", ssid);
-    nvs_set_str(nvs, "password", pass);
-    nvs_commit(nvs);
-    nvs_close(nvs);
+    if (nvs_open("wifi_config", NVS_READWRITE, &nvs) == ESP_OK) {
+        nvs_set_str(nvs, "ssid", ssid);
+        nvs_set_str(nvs, "password", pass);
+        nvs_commit(nvs);
+        nvs_close(nvs);
+    }
+    else {
+        ESP_LOGE(TAG, "Failed to open NVS");
+        httpd_resp_send_500(req);
+        return ESP_FAIL;
+    }
 
     httpd_resp_send(req, "Wi-Fi Configured. Rebooting...", HTTPD_RESP_USE_STRLEN);
+
     for (int i = 3; i > 0; i--) {
-        ESP_LOGI(TAG, "Rebooting in %d seconds...", i);
+        ESP_LOGW(TAG, "Rebooting in %d seconds...", i);
         vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
+
     esp_restart();
     return ESP_OK;
 }
-long long  pow_off = 0;
+// favicon.ico 请求处理函数
+esp_err_t favicon_handler(httpd_req_t* req) {
+    // 响应空图标数据
+    httpd_resp_set_type(req, "image/x-icon");
+    const char* empty_icon = "";
+    httpd_resp_send(req, empty_icon, HTTPD_RESP_USE_STRLEN);
+    return ESP_OK;
+}
+
+long long pow_off = 0;
 esp_err_t stream_handler(httpd_req_t* req) {
     long last_request_time = 0;
     camera_fb_t* fb = NULL;
@@ -144,6 +170,7 @@ esp_err_t stream_handler(httpd_req_t* req) {
     last_frame = 0;
     return res;
 }
+
 void start_webserver(void) {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     httpd_handle_t server = NULL;
@@ -168,6 +195,14 @@ void start_webserver(void) {
         .user_ctx = NULL,
     };
     httpd_register_uri_handler(server, &config_uri);
+
+    httpd_uri_t favicon_uri = {
+        .uri = "/favicon.ico",
+        .method = HTTP_GET,
+        .handler = favicon_handler,
+        .user_ctx = NULL,
+    };
+    httpd_register_uri_handler(server, &favicon_uri);
 
     ESP_LOGI(TAG, "HTTP server started");
 }
