@@ -40,10 +40,7 @@ int rssi_to_percentage(int rssi) {
         return (int)((rssi + 70) * 100 / 40);  // 线性映射
     }
 }
-// 局域网 IP 打印任务
 void print_ip_task(void* pvParameters) {
-
-
     esp_netif_t* netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
     if (!netif) {
         printf("Failed to get netif handle for station mode.\n");
@@ -53,53 +50,67 @@ void print_ip_task(void* pvParameters) {
 
     bool wifi_connected = false;  // 用于标记 Wi-Fi 是否已连接
     char ip_string[16];           // 存储 IP 地址字符串
+    static bool mdns_initialized = false;  // 防止重复初始化 mDNS
 
     while (true) {
         esp_netif_ip_info_t ip_info;
         pow_off++;
-        //关机倒计时
+
+        // 关机倒计时
         printf("%llds后关机\n", 600 - pow_off * 3);
         if (pow_off > 200) {
             ESP_LOGI("SHUTDOWN", "Entering deep sleep...");
             vTaskDelay(pdMS_TO_TICKS(100));
             esp_deep_sleep_start();
         }
+
         if (esp_netif_get_ip_info(netif, &ip_info) == ESP_OK && ip_info.ip.addr != 0) {
             // Wi-Fi 已连接且获取到有效 IP
             if (!wifi_connected) {
                 printf("Wi-Fi 已连接\n");
                 wifi_connected = true;  // 更新标记
-                ESP_LOGI(TAG, "Initializing mDNS...");
 
-                // 初始化 mDNS 服务
-                esp_err_t mdns_ret = mdns_init();
-                if (mdns_ret != ESP_OK) {
-                    ESP_LOGE(TAG, "mDNS initialization failed: %s", esp_err_to_name(mdns_ret));
-                    return;
-                }
-                esp_err_t err = mdns_hostname_set("paper");
-                if (err != ESP_OK) {
-                    ESP_LOGE(TAG, "Failed to set mDNS hostname: %s", esp_err_to_name(err));
-                    return;
-                }
-                ESP_LOGI(TAG, "mDNS hostname set to 'paper.local'");
-                // 设置服务（如 HTTP 服务）
-                esp_err_t service_ret = mdns_service_add("ESP32 Stream Server", "_http", "_tcp", 80, NULL, 0);
-                if (service_ret != ESP_OK) {
-                    ESP_LOGE(TAG, "Failed to add mDNS service: %s", esp_err_to_name(service_ret));
-                    return;
-                }
-                ESP_LOGI(TAG, "mDNS service '_http' on port 80 registered successfully");
+                // 初始化 mDNS（仅初始化一次）
+                if (!mdns_initialized) {
+                    ESP_LOGI(TAG, "Initializing mDNS...");
 
+                    // 初始化 mDNS 服务
+                    esp_err_t mdns_ret = mdns_init();
+                    if (mdns_ret != ESP_OK) {
+                        ESP_LOGE(TAG, "mDNS initialization failed: %s", esp_err_to_name(mdns_ret));
+                        vTaskDelete(NULL);
+                        return;
+                    }
+                    esp_err_t err = mdns_hostname_set("paper");
+                    if (err != ESP_OK) {
+                        ESP_LOGE(TAG, "Failed to set mDNS hostname: %s", esp_err_to_name(err));
+                        vTaskDelete(NULL);
+                        return;
+                    }
+                    ESP_LOGI(TAG, "mDNS hostname set to 'paper.local'");
+
+                    // 设置服务（如 HTTP 服务）
+                    esp_err_t service_ret = mdns_service_add("ESP32 Stream Server", "_http", "_tcp", 80, NULL, 0);
+                    if (service_ret != ESP_OK) {
+                        ESP_LOGE(TAG, "Failed to add mDNS service: %s", esp_err_to_name(service_ret));
+                        vTaskDelete(NULL);
+                        return;
+                    }
+                    ESP_LOGI(TAG, "mDNS service '_http' on port 80 registered successfully");
+                    mdns_initialized = true;  // 标记 mDNS 已初始化
+                }
             }
+
+            // 打印 IP 地址
             snprintf(ip_string, sizeof(ip_string), IPSTR, IP2STR(&ip_info.ip));
             printf("IP Address:  http://%s\n", ip_string);
             printf("IP Address:  http://paper.local\n");
+
             // 获取 Wi-Fi 信号强度
             wifi_ap_record_t ap_info;
             if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
                 int rssi_percentage = rssi_to_percentage(ap_info.rssi);  // 转换为百分比
-                printf("Wi-Fi 信号强度: %d dBm (%d%%)\n", ap_info.rssi, rssi_percentage);  // 打印信号强度及百分比
+                printf("Wi-Fi 信号强度: %d dBm (%d%%)\n", ap_info.rssi, rssi_percentage);
             }
             else {
                 printf("无法获取信号强度\n");
@@ -121,9 +132,11 @@ void print_ip_task(void* pvParameters) {
             wifi_connected = false;  // 更新标记
 #endif
         }
-        vTaskDelay(pdMS_TO_TICKS(3000)); // 延迟 1 秒
+
+        vTaskDelay(pdMS_TO_TICKS(3000));  // 延迟 3 秒
     }
 }
+
 
 
 

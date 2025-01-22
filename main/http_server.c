@@ -5,8 +5,10 @@
 #include "wifi_connect.h"
 #include "camera_config.h"
 #include "esp_camera.h"
+#include "esp_wifi.h"
 #include "esp_timer.h"
-
+#include <ctype.h>
+#include "esp_task_wdt.h"
 #define PART_BOUNDARY "123456789000000000000987654321"
 #define STREAM_CONTENT_TYPE "multipart/x-mixed-replace;boundary=" PART_BOUNDARY
 #define STREAM_BOUNDARY "\r\n--" PART_BOUNDARY "\r\n"
@@ -16,7 +18,20 @@
 
 // 替代 millis() 宏定义
 #define millis() (esp_timer_get_time() / 1000)
+void safe_restart() {
+    // 删除打印 IP 任务
+    TaskHandle_t print_ip_task_handle = xTaskGetHandle("Print_IP_Task");
+    if (print_ip_task_handle != NULL) {
+        vTaskDelete(print_ip_task_handle);
+        ESP_LOGI(TAG, "Print_IP_Task stopped successfully.");
+    }
 
+    // 等待 100ms 确保任务完全停止
+    vTaskDelay(pdMS_TO_TICKS(100));
+
+    // 重启设备
+    esp_restart();
+}
 // HTTP根页面处理函数
 esp_err_t root_handler(httpd_req_t* req) {
     const char* html_form =
@@ -34,52 +49,71 @@ esp_err_t root_handler(httpd_req_t* req) {
     httpd_resp_send(req, html_form, HTTPD_RESP_USE_STRLEN);
     return ESP_OK;
 }
+// URL 解码函数
+static void url_decode(char* dst, const char* src, size_t dst_size) {
+    char a, b;
+    while (*src && dst_size > 1) {
+        if (*src == '%') {
+            if ((a = src[1]) && (b = src[2]) && isxdigit(a) && isxdigit(b)) {
+                a = (a <= '9' ? a - '0' : (a <= 'F' ? a - 'A' + 10 : a - 'a' + 10));
+                b = (b <= '9' ? b - '0' : (b <= 'F' ? b - 'A' + 10 : b - 'a' + 10));
+                *dst++ = 16 * a + b;
+                src += 3;
+                dst_size--;
+            }
+            else {
+                break;
+            }
+        }
+        else {
+            *dst++ = *src++;
+            dst_size--;
+        }
+    }
+    *dst = '\0';
+}
 
-// 配置Wi-Fi处理函数
 esp_err_t config_handler(httpd_req_t* req) {
     char buf[100];
-    int ret = httpd_req_recv(req, buf, sizeof(buf) - 1); // 保留空间存放 '\0'
+    int ret = httpd_req_recv(req, buf, sizeof(buf));
     if (ret <= 0) {
         httpd_resp_send_500(req);
         return ESP_FAIL;
     }
-    buf[ret] = '\0'; // 确保字符串以 '\0' 结尾
 
-    // 移除尾随换行符或空格
-    char* end = buf + ret - 1;
-    while (end > buf && (*end == '\n' || *end == '\r' || *end == ' ')) {
-        *end = '\0';
-        end--;
-    }
+    buf[ret] = '\0'; // 确保字符串以 NULL 结尾
 
+    char encoded_ssid[32] = { 0 }, encoded_pass[64] = { 0 };
     char ssid[32] = { 0 }, pass[64] = { 0 };
-    sscanf(buf, "SSID=%31[^&]&PASS=%63s", ssid, pass);
+    sscanf(buf, "SSID=%31[^&]&PASS=%63s", encoded_ssid, encoded_pass);
 
-    ESP_LOGI(TAG, "Received SSID: %s", ssid);
-    ESP_LOGI(TAG, "Received Password: %s", pass);
+    // URL 解码
+    url_decode(ssid, encoded_ssid, sizeof(ssid));
+    url_decode(pass, encoded_pass, sizeof(pass));
 
-    // 保存Wi-Fi配置
+    ESP_LOGW(TAG, "Received SSID: %s", ssid);
+    ESP_LOGW(TAG, "Received Password: %s", pass);
+
+    // 保存 Wi-Fi 配置
     nvs_handle_t nvs;
-    if (nvs_open("wifi_config", NVS_READWRITE, &nvs) == ESP_OK) {
-        nvs_set_str(nvs, "ssid", ssid);
-        nvs_set_str(nvs, "password", pass);
-        nvs_commit(nvs);
-        nvs_close(nvs);
-    }
-    else {
-        ESP_LOGE(TAG, "Failed to open NVS");
-        httpd_resp_send_500(req);
-        return ESP_FAIL;
-    }
+    nvs_open("wifi_config", NVS_READWRITE, &nvs);
+    nvs_set_str(nvs, "ssid", ssid);
+    nvs_set_str(nvs, "password", pass);
+    nvs_commit(nvs);
+    nvs_close(nvs);
 
     httpd_resp_send(req, "Wi-Fi Configured. Rebooting...", HTTPD_RESP_USE_STRLEN);
-
     for (int i = 3; i > 0; i--) {
         ESP_LOGW(TAG, "Rebooting in %d seconds...", i);
         vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
+    // 停止 Wi-Fi
+    esp_wifi_stop();
+    esp_wifi_deinit();
 
-    esp_restart();
+    // 禁用任务看门狗
+    esp_task_wdt_deinit();
+    safe_restart();
     return ESP_OK;
 }
 // favicon.ico 请求处理函数
