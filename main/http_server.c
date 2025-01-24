@@ -49,11 +49,67 @@ esp_err_t root_handler(httpd_req_t* req) {
     httpd_resp_send(req, html_form, HTTPD_RESP_USE_STRLEN);
     return ESP_OK;
 }
+static void html_entity_decode(char* dst, const char* src, size_t dst_size) {
+    size_t i = 0, j = 0;
+    char temp[10];
+
+    while (src[i] && j < dst_size - 1) {
+        if (src[i] == '&' && src[i + 1] == '#') {
+            // 查找 ';&#' 结束符
+            int len = 0;
+            while (src[i + len] != ';' && src[i + len] != '\0') {
+                len++;
+            }
+
+            if (src[i + len] == ';') {
+                // 解析实体编号
+                strncpy(temp, src + i + 2, len - 2); // 获取实体编码
+                temp[len - 2] = '\0';
+                int code = atoi(temp);  // 将实体编号转为整数
+
+                // 直接将编码转换为对应的字符
+                if (code > 0 && code < 0x80) {
+                    dst[j++] = (char)code;  // ASCII字符
+                }
+                else {
+                    // 处理 Unicode 字符并转换为 UTF-8
+                    if (code >= 0x10000) {
+                        // 大于 UTF-16 上界的字符需要采用更高字节的表示
+                        dst[j++] = (char)((code >> 18) | 0xF0);   // 获取高字节
+                        dst[j++] = (char)((code >> 12) & 0x3F) | 0x80;
+                        dst[j++] = (char)((code >> 6) & 0x3F) | 0x80;
+                        dst[j++] = (char)(code & 0x3F) | 0x80;
+                    }
+                    else if (code >= 0x800) {
+                        dst[j++] = (char)((code >> 12) | 0xE0);
+                        dst[j++] = (char)((code >> 6) & 0x3F) | 0x80;
+                        dst[j++] = (char)(code & 0x3F) | 0x80;
+                    }
+                    else {
+                        dst[j++] = (char)((code >> 6) | 0xC0);
+                        dst[j++] = (char)(code & 0x3F) | 0x80;
+                    }
+                }
+
+                i += len + 1; // 跳过实体部分
+                continue;
+            }
+        }
+
+        // 普通字符直接复制
+        dst[j++] = src[i++];
+    }
+
+    dst[j] = '\0';  // 确保字符串以 null 结尾
+}
 // URL 解码函数
 static void url_decode(char* dst, const char* src, size_t dst_size) {
     char a, b;
+    size_t len = 0;
+
     while (*src && dst_size > 1) {
         if (*src == '%') {
+            // 解码两个十六进制字符
             if ((a = src[1]) && (b = src[2]) && isxdigit(a) && isxdigit(b)) {
                 a = (a <= '9' ? a - '0' : (a <= 'F' ? a - 'A' + 10 : a - 'a' + 10));
                 b = (b <= '9' ? b - '0' : (b <= 'F' ? b - 'A' + 10 : b - 'a' + 10));
@@ -69,10 +125,15 @@ static void url_decode(char* dst, const char* src, size_t dst_size) {
             *dst++ = *src++;
             dst_size--;
         }
+        len++;
     }
     *dst = '\0';
-}
 
+    if (len >= dst_size) {
+        dst[dst_size - 1] = '\0';
+    }
+}
+// 配置处理函数
 esp_err_t config_handler(httpd_req_t* req) {
     char buf[100];
     int ret = httpd_req_recv(req, buf, sizeof(buf));
@@ -83,22 +144,46 @@ esp_err_t config_handler(httpd_req_t* req) {
 
     buf[ret] = '\0'; // 确保字符串以 NULL 结尾
 
+    // 打印原始表单数据，检查 URL 编码是否正确
+    ESP_LOGW(TAG, "Received raw data: %s", buf);
+
     char encoded_ssid[32] = { 0 }, encoded_pass[64] = { 0 };
     char ssid[32] = { 0 }, pass[64] = { 0 };
     sscanf(buf, "SSID=%31[^&]&PASS=%63s", encoded_ssid, encoded_pass);
+
+    // 打印编码后的 SSID 和密码
+    ESP_LOGW(TAG, "Encoded SSID: %s", encoded_ssid);
+    ESP_LOGW(TAG, "Encoded Password: %s", encoded_pass);
 
     // URL 解码
     url_decode(ssid, encoded_ssid, sizeof(ssid));
     url_decode(pass, encoded_pass, sizeof(pass));
 
-    ESP_LOGW(TAG, "Received SSID: %s", ssid);
-    ESP_LOGW(TAG, "Received Password: %s", pass);
+    // 打印解码后的 SSID 和密码
+    ESP_LOGW(TAG, "Decoded SSID: %s", ssid);
+    ESP_LOGW(TAG, "Decoded Password: %s", pass);
+
+    // 如果 SSID 或密码为空，可能是 URL 解码失败
+    if (strlen(ssid) == 0 || strlen(pass) == 0) {
+        ESP_LOGE(TAG, "Failed to decode SSID or Password");
+        httpd_resp_send_500(req);
+        return ESP_FAIL;
+    }
+
+    // HTML 实体解码
+    char decoded_ssid[32] = { 0 }, decoded_pass[64] = { 0 };
+    html_entity_decode(decoded_ssid, ssid, sizeof(decoded_ssid));
+    html_entity_decode(decoded_pass, pass, sizeof(decoded_pass));
+
+    // 打印解码后的 SSID 和密码
+    ESP_LOGW(TAG, "HTML Decoded SSID: %s", decoded_ssid);
+    ESP_LOGW(TAG, "HTML Decoded Password: %s", decoded_pass);
 
     // 保存 Wi-Fi 配置
     nvs_handle_t nvs;
     nvs_open("wifi_config", NVS_READWRITE, &nvs);
-    nvs_set_str(nvs, "ssid", ssid);
-    nvs_set_str(nvs, "password", pass);
+    nvs_set_str(nvs, "ssid", decoded_ssid);
+    nvs_set_str(nvs, "password", decoded_pass);
     nvs_commit(nvs);
     nvs_close(nvs);
 

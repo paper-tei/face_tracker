@@ -4,7 +4,7 @@ import os
 import subprocess
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QPushButton,
-    QLabel, QTextEdit, QComboBox
+    QLabel, QTextEdit, QComboBox, QFileDialog
 )
 from PyQt5.QtCore import QThread, pyqtSignal
 import serial.tools.list_ports
@@ -55,6 +55,42 @@ class FlashThread(QThread):
         except Exception as e:
             self.finished.emit(False, f"烧录异常: {str(e)}")
 
+class EraseFlashThread(QThread):
+    log_output = pyqtSignal(str)
+    finished = pyqtSignal(bool, str)
+
+    def __init__(self, port, chip_type):
+        super().__init__()
+        self.port = port
+        self.chip_type = chip_type
+
+    def run(self):
+        try:
+            erase_command = [
+                'python', '-m', 'esptool', '--chip', self.chip_type,
+                '--port', self.port, 'erase_flash'
+            ]
+
+            process = subprocess.Popen(
+                erase_command,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True
+            )
+
+            while True:
+                line = process.stdout.readline()
+                if line:
+                    self.log_output.emit(line.strip())
+                if process.poll() is not None:
+                    break
+
+            process.wait()
+            if process.returncode == 0:
+                self.finished.emit(True, "擦除成功！")
+            else:
+                stderr_output = process.stderr.read()
+                self.finished.emit(False, f"擦除失败: {stderr_output.strip()}")
+        except Exception as e:
+            self.finished.emit(False, f"擦除异常: {str(e)}")
 
 class SerialMonitorThread(QThread):
     log_output = pyqtSignal(str)
@@ -87,7 +123,6 @@ class SerialMonitorThread(QThread):
         if self.serial_connection:
             self.serial_connection.close()
 
-
 class FlashToolGUI(QWidget):
     def __init__(self):
         super().__init__()
@@ -119,6 +154,16 @@ class FlashToolGUI(QWidget):
         self.wifi_button.clicked.connect(lambda: self.start_flash("WIFI"))
         self.layout.addWidget(self.wifi_button)
 
+        # 选择 app.bin 文件按钮
+        self.select_app_button = QPushButton("选择 app.bin 文件")
+        self.select_app_button.clicked.connect(self.select_app_file)
+        self.layout.addWidget(self.select_app_button)
+
+        # 擦除 Flash 按钮
+        self.erase_button = QPushButton("擦除 Flash")
+        self.erase_button.clicked.connect(self.erase_flash)
+        self.layout.addWidget(self.erase_button)
+
         # 打开串口按钮
         self.open_serial_button = QPushButton("打开串口")
         self.open_serial_button.clicked.connect(self.open_serial)
@@ -143,6 +188,9 @@ class FlashToolGUI(QWidget):
         self.usb_firmware = os.path.join(self.resources_dir, "USB.bin")
         self.wifi_firmware = os.path.join(self.resources_dir, "WIFI.bin")
 
+        # 用户选择的 app.bin 文件路径
+        self.app_firmware = None
+
         # 串口监听线程
         self.serial_monitor_thread = None
 
@@ -150,6 +198,14 @@ class FlashToolGUI(QWidget):
         if hasattr(sys, '_MEIPASS'):
             return os.path.join(sys._MEIPASS, relative_path)
         return os.path.join(os.path.abspath("."), relative_path)
+
+    def select_app_file(self):
+        # 打开文件对话框让用户选择 app.bin 文件
+        options = QFileDialog.Options()
+        file, _ = QFileDialog.getOpenFileName(self, "选择 app.bin 文件", "", "Bin Files (*.bin);;All Files (*)", options=options)
+        if file:
+            self.app_firmware = file
+            self.update_log(f"选择的 app.bin 文件: {file}")
 
     def populate_serial_ports(self):
         self.port_combobox.clear()
@@ -165,7 +221,13 @@ class FlashToolGUI(QWidget):
             self.update_log("[错误]: 请选择有效的串口！")
             return
 
-        firmware_file = self.usb_firmware if firmware_type == "USB" else self.wifi_firmware
+        # 如果用户选择了 app.bin 文件，则使用选择的文件
+        firmware_file = self.app_firmware if self.app_firmware else (self.usb_firmware if firmware_type == "USB" else self.wifi_firmware)
+        
+        if not firmware_file:
+            self.update_log("[错误]: 未选择固件文件！")
+            return
+
         chip_type = "esp32s3"
 
         if not os.path.exists(self.bootloader_file) or not os.path.exists(self.partition_table_file):
@@ -184,6 +246,39 @@ class FlashToolGUI(QWidget):
         self.flash_thread.log_output.connect(self.update_log)
         self.flash_thread.finished.connect(lambda success, message: self.flash_finished(success, message, port))
         self.flash_thread.start()
+
+    def erase_flash(self):
+        port = self.port_combobox.currentText()
+        if not port or port == "未检测到串口":
+            self.update_log("[错误]: 请选择有效的串口！")
+            return
+
+        chip_type = "esp32s3"
+
+        self.status_label.setText("正在擦除 Flash...")
+        self.usb_button.setEnabled(False)
+        self.wifi_button.setEnabled(False)
+        self.erase_button.setEnabled(False)
+
+        if self.serial_monitor_thread:
+            self.serial_monitor_thread.stop()
+            self.serial_monitor_thread = None
+
+        self.erase_thread = EraseFlashThread(port, chip_type)
+        self.erase_thread.log_output.connect(self.update_log)
+        self.erase_thread.finished.connect(self.erase_finished)
+        self.erase_thread.start()
+
+    def erase_finished(self, success, message):
+        self.usb_button.setEnabled(True)
+        self.wifi_button.setEnabled(True)
+        self.erase_button.setEnabled(True)
+        self.status_label.setText(message)
+
+        if success:
+            self.update_log("[系统]: 擦除完成。")
+        else:
+            self.update_log(f"[错误]: {message}")
 
     def open_serial(self, port=None):
         port = port or self.port_combobox.currentText()

@@ -1,6 +1,7 @@
 # 忽略 build 目录（编译产物）
 build/
 components/
+dist/
 # 忽略 VSCode 相关配置
 .vscode/
 *.code-workspace
