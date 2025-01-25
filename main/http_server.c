@@ -121,6 +121,12 @@ static void url_decode(char* dst, const char* src, size_t dst_size) {
                 break;
             }
         }
+        else if (*src == '+') {
+            // 将加号（+）转换为空格
+            *dst++ = ' ';
+            src++;
+            dst_size--;
+        }
         else {
             *dst++ = *src++;
             dst_size--;
@@ -129,10 +135,12 @@ static void url_decode(char* dst, const char* src, size_t dst_size) {
     }
     *dst = '\0';
 
+    // 防止目标缓冲区溢出
     if (len >= dst_size) {
         dst[dst_size - 1] = '\0';
     }
 }
+
 // 配置处理函数
 esp_err_t config_handler(httpd_req_t* req) {
     char buf[100];
