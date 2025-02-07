@@ -4,9 +4,8 @@
 #define TAG "MAIN"
 #include <stdio.h>
 #include <inttypes.h>
-#include "sdkconfig.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
+
+
 #include "esp_system.h"
 #include "esp_flash.h"
 #include "esp_wifi.h"  // 包含 Wi-Fi 相关的头文件
@@ -27,7 +26,6 @@
 #define MIN_RSSI -100  // 最弱信号（dBm）
 #define MAX_RSSI -30      // 最强信号（dBm）
 extern long long pow_off;
-// 将RSSI转换为百分比（线性映射）
 int rssi_to_percentage(int rssi) {
     if (rssi <= -70) {
         return 0;  // 最弱信号 (-70 dBm)
@@ -120,6 +118,7 @@ void print_ip_task(void* pvParameters) {
 #ifndef STATIC_WIFI_SSID
             // Wi-Fi 未连接或 IP 无效
             if (!wifi_connected) {
+                ESP_LOGE(TAG, "请打开手机连接\"paper_face_tracker\" Wi-Fi进行配网！\n");
                 printf("请打开手机连接\"paper_face_tracker\" Wi-Fi进行配网！\n");
                 printf("Wi-Fi 密码: 12345678\n");
             }
@@ -156,7 +155,7 @@ void app_main(void) {
     vTaskDelay(pdMS_TO_TICKS(100)); // 延迟 1 秒
     setupCameraSensor();
     //capture_image_and_print();
-#ifdef USB
+
     usb_serial_jtag_driver_config_t usb_serial_jtag_config = {
         .rx_buffer_size = 4096 * 10, // RX 缓冲区大小
         .tx_buffer_size = 4096 * 10  // TX 缓冲区大小
@@ -169,7 +168,8 @@ void app_main(void) {
         return;
     }
     ESP_LOGI(TAG, "USB-Serial-JTAG driver installed successfully");
-    // 启动打印 IP 地址的任务
+    start_usb_read_task();
+#ifdef USB
     while (1) {
         send_camera_frame();
     }
@@ -178,8 +178,8 @@ void app_main(void) {
 #endif // USB
 #ifdef WIFI
     // 初始化 NVS（非易失性存储，用于保存 Wi-Fi 配置等）
-    esp_err_t ret = nvs_flash_init();
-    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+    esp_err_t ret1 = nvs_flash_init();
+    if (ret1 == ESP_ERR_NVS_NO_FREE_PAGES || ret1 == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         ESP_LOGW(TAG, "NVS partition needs to be erased.");
         ESP_ERROR_CHECK(nvs_flash_erase());
         ESP_ERROR_CHECK(nvs_flash_init());

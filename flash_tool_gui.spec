@@ -5,7 +5,7 @@ a = Analysis(
     ['flash_tool_gui.py'],
     pathex=[],
     binaries=[],
-    datas=[('C:/Users/paper/face_tracker/targets', 'targets'), ('C:/Users/paper/face_tracker/resources', 'resources')],
+    datas=[('targets', 'targets'), ('resources', 'resources')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

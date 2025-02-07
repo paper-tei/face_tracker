@@ -49,7 +49,7 @@
 #endif // DEBUG
 camera_config_t get_camera_config(void);
 esp_err_t camera_init();
-void capture_image_and_print();
+
 void setupCameraSensor();
-void configure_camera_crop(int x_start, int y_start, int width, int height);
+
 void check_cropped_image_size();

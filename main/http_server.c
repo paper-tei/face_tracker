@@ -143,41 +143,49 @@ static void url_decode(char* dst, const char* src, size_t dst_size) {
 
 // 配置处理函数
 esp_err_t config_handler(httpd_req_t* req) {
-    char buf[100];
-    int ret = httpd_req_recv(req, buf, sizeof(buf));
+    char buf[256] = { 0 }; // 增大接收缓冲区
+    int ret = httpd_req_recv(req, buf, sizeof(buf) - 1);
     if (ret <= 0) {
         httpd_resp_send_500(req);
         return ESP_FAIL;
     }
+    buf[ret] = '\0';
+    ESP_LOGI(TAG, "Received raw data: %s", buf);
 
-    buf[ret] = '\0'; // 确保字符串以 NULL 结尾
+    char encoded_ssid[128] = { 0 }, encoded_pass[128] = { 0 };
+    char ssid[128] = { 0 }, pass[128] = { 0 };
 
-    // 打印原始表单数据，检查 URL 编码是否正确
-    ESP_LOGW(TAG, "Received raw data: %s", buf);
+    // 解析 SSID 和 PASS
+    char* pass_start = strstr(buf, "&PASS=");
+    if (pass_start) {
+        strncpy(encoded_ssid, buf + 5, pass_start - buf - 5); // 5 为 "SSID=" 的长度
+        strncpy(encoded_pass, pass_start + 6, sizeof(encoded_pass) - 1); // 跳过 "&PASS="
+    }
+    else {
+        ESP_LOGE(TAG, "Failed to parse SSID or PASS");
+        httpd_resp_send_500(req);
+        return ESP_FAIL;
+    }
 
-    char encoded_ssid[32] = { 0 }, encoded_pass[64] = { 0 };
-    char ssid[32] = { 0 }, pass[64] = { 0 };
-    sscanf(buf, "SSID=%31[^&]&PASS=%63s", encoded_ssid, encoded_pass);
+    // 确保缓冲区以 NULL 结尾
+    encoded_ssid[sizeof(encoded_ssid) - 1] = '\0';
+    encoded_pass[sizeof(encoded_pass) - 1] = '\0';
 
-    // 打印编码后的 SSID 和密码
-    ESP_LOGW(TAG, "Encoded SSID: %s", encoded_ssid);
-    ESP_LOGW(TAG, "Encoded Password: %s", encoded_pass);
+    ESP_LOGI(TAG, "Encoded SSID: %s", encoded_ssid);
+    ESP_LOGI(TAG, "Encoded PASS: %s", encoded_pass);
 
     // URL 解码
     url_decode(ssid, encoded_ssid, sizeof(ssid));
     url_decode(pass, encoded_pass, sizeof(pass));
 
-    // 打印解码后的 SSID 和密码
-    ESP_LOGW(TAG, "Decoded SSID: %s", ssid);
-    ESP_LOGW(TAG, "Decoded Password: %s", pass);
+    ESP_LOGI(TAG, "Decoded SSID: %s", ssid);
+    ESP_LOGI(TAG, "Decoded PASS: %s", pass);
 
-    // 如果 SSID 或密码为空，可能是 URL 解码失败
     if (strlen(ssid) == 0 || strlen(pass) == 0) {
-        ESP_LOGE(TAG, "Failed to decode SSID or Password");
+        ESP_LOGE(TAG, "SSID or Password is empty after decoding");
         httpd_resp_send_500(req);
         return ESP_FAIL;
     }
-
     // HTML 实体解码
     char decoded_ssid[32] = { 0 }, decoded_pass[64] = { 0 };
     html_entity_decode(decoded_ssid, ssid, sizeof(decoded_ssid));
