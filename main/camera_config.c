@@ -3,6 +3,7 @@
 #include "esp_log.h"
 #include <stdio.h>
 #define TAG "CAMERA_CONFIG"
+extern int exposure;
 camera_config_t get_camera_config(void) {
     camera_config_t config = {
         .pin_pwdn = CAM_PIN_PWDN,
@@ -47,7 +48,7 @@ esp_err_t camera_init() {
     ESP_LOGI(TAG, "Camera initialized successfully!");
     return ESP_OK;
 }
-int exposure = 800;//曝光值
+
 // 配置摄像头传感器的设置
 void setupCameraSensor() {
     ESP_LOGD(TAG, "Setting up camera sensor...");

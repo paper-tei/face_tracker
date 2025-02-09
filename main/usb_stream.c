@@ -7,13 +7,14 @@
 #include <string.h>
 #include "nvs.h"
 #include "nvs_flash.h"
+#include "pwm_driver.h"
 #define ETVR_HEADER       "\xFF\xA0"
 #define ETVR_HEADER_FRAME "\xFF\xA1"
 
 #define USB_SEND_CHUNK_SIZE   64         // USB 单次发送的最大字节数
 
 static const char* TAG = "USB_STREAM";
-
+esp_err_t save_brightness_to_nvs(int brightness);
 void send_frame_via_usb(const uint8_t* buf, size_t len) {
     uint8_t len_bytes[2];
 
@@ -209,6 +210,22 @@ void read_data_from_usb() {
                     }
                 }
             }
+            else if (strstr((char*)buf, "BRIGHTNESS:") != NULL) {
+                // 解析亮度值数据包
+                int brightness = 0;
+                if (sscanf((char*)buf, "BRIGHTNESS:%d", &brightness) == 1) {
+                    ESP_LOGW(TAG, "设置新的亮度值为: %d", brightness);
+
+                    // 保存亮度值（可以根据实际需求进行存储）
+                    esp_err_t err = save_brightness_to_nvs(brightness);
+                    if (err != ESP_OK) {
+                        ESP_LOGE(TAG, "Failed to save brightness value to NVS");
+                    }
+
+                    // 可以添加调整亮度的逻辑，例如通过 PWM 控制亮度
+                    pwm_set_duty(brightness);  // 50% 占空比 
+                }
+            }
             else {
                 ESP_LOGW(TAG, "Unknown data received: %s", buf);
             }
@@ -218,6 +235,37 @@ void read_data_from_usb() {
         vTaskDelay(pdMS_TO_TICKS(100));
     }
 }
+esp_err_t save_brightness_to_nvs(int brightness) {
+    esp_err_t err;
+    nvs_handle_t my_handle;
+
+    // 打开 NVS 存储（如果不存在会创建）
+    err = nvs_open("camera_config", NVS_READWRITE, &my_handle);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to open NVS handle! Error: %s", esp_err_to_name(err));
+        return err;
+    }
+
+    // 保存亮度值
+    err = nvs_set_i32(my_handle, "led_brightness", brightness);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to write led_brightness to NVS! Error: %s", esp_err_to_name(err));
+        nvs_close(my_handle);
+        return err;
+    }
+
+    // 提交保存的数据
+    err = nvs_commit(my_handle);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to commit data to NVS! Error: %s", esp_err_to_name(err));
+    }
+
+    // 关闭 NVS 存储
+    nvs_close(my_handle);
+
+    return err;
+}
+
 void usb_read_task(void* arg) {
     read_data_from_usb();  // 持续读取数据
 }
@@ -227,23 +275,35 @@ void start_usb_read_task() {
 }
 // 读取 WiFi 配置和曝光值并打印
 extern int exposure;
+extern int led_brightness;
 void read_data_from_nvs() {
     esp_err_t err;
     nvs_handle_t my_handle;
+
     // 打开 NVS 存储（如果不存在会创建）
     err = nvs_open("camera_config", NVS_READONLY, &my_handle);
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to open NVS handle for Exposure! Error: %s", esp_err_to_name(err));
+        ESP_LOGE(TAG, "Failed to open NVS handle for Exposure and Brightness! Error: %s", esp_err_to_name(err));
         return;
     }
 
     // 读取曝光值
     err = nvs_get_i32(my_handle, "exposure", &exposure);
     if (err == ESP_OK) {
-        ESP_LOGW(TAG, "已配置新的曝光值,曝光值为: %d", exposure);
+        ESP_LOGW(TAG, "已配置新的曝光值, 曝光值为: %d", exposure);
     }
     else {
         ESP_LOGE(TAG, "Failed to read Exposure value from NVS! Error: %s", esp_err_to_name(err));
+    }
+
+    // 读取 LED 亮度值
+    err = nvs_get_i32(my_handle, "led_brightness", &led_brightness);
+    if (err == ESP_OK) {
+        ESP_LOGW(TAG, "已配置新的 LED 亮度值, 亮度为: %d", led_brightness);
+        pwm_set_duty(led_brightness);  // 50% 占空比 
+    }
+    else {
+        ESP_LOGE(TAG, "Failed to read LED brightness value from NVS! Error: %s", esp_err_to_name(err));
     }
 
     // 关闭 NVS 存储

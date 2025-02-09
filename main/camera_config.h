@@ -44,7 +44,7 @@
 
 #define CAM_PIN_VSYNC   6    // 垂直同步信号，连接到 GPIO6
 #define CAM_PIN_HREF    7    // 水平参考信号，连接到 GPIO7
-#define CAM_PIN_PCLK    3   // 像素时钟，连接到 GPIO3
+#define CAM_PIN_PCLK    13   // 像素时钟，连接到 GPIO3
 
 #endif // DEBUG
 camera_config_t get_camera_config(void);

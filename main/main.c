@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include <inttypes.h>
 
-
+#include "pwm_driver.h"
 #include "esp_system.h"
 #include "esp_flash.h"
 #include "esp_wifi.h"  // 包含 Wi-Fi 相关的头文件
@@ -25,6 +25,8 @@
 extern wifi_config_t wifi_config;
 #define MIN_RSSI -100  // 最弱信号（dBm）
 #define MAX_RSSI -30      // 最强信号（dBm）
+int exposure = 800;//曝光值
+int led_brightness = 4000;  // 默认亮度值为4000
 extern long long pow_off;
 int rssi_to_percentage(int rssi) {
     if (rssi <= -70) {
@@ -143,6 +145,9 @@ void print_ip_task(void* pvParameters) {
 
 void app_main(void) {
 
+    // 初始化 PWM
+    pwm_init(PWM_GPIO, PWM_FREQ, PWM_RESOLUTION);
+
     esp_log_level_set("*", ESP_LOG_WARN); // 仅打印警告及以上日志
     //esp_log_level_set(TAG, ESP_LOG_INFO); // 打印 info 及以上级别的日志
 
@@ -197,6 +202,11 @@ void app_main(void) {
         ESP_LOGI(TAG, "Wi-Fi connected successfully. Skipping HTTP server.");
     }
 
+
+    // 设置占空比
+    pwm_set_duty(led_brightness);  // 50% 占空比 
+    // 启动 PWM 输出
+    pwm_start();
     // 配置传感器
     ESP_LOGI(TAG, "Initializing Camera...");
     if (camera_init() != ESP_OK) {
@@ -211,6 +221,5 @@ void app_main(void) {
     // 启动打印 IP 地址的任务
     xTaskCreate(print_ip_task, "Print_IP_Task", 4096, NULL, 5, NULL);
     ESP_LOGI(TAG, "System initialization complete. Ready for operation.");
-
 #endif // WIFI
 }
