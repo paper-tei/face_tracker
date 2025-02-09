@@ -38,7 +38,6 @@ camera_config_t get_camera_config(void) {
 
 // 初始化摄像头
 esp_err_t camera_init() {
-    esp_rom_delay_us(100); // 延迟 1ms
     camera_config_t config = get_camera_config();
     esp_err_t err = esp_camera_init(&config);
     if (err != ESP_OK) {
@@ -46,10 +45,9 @@ esp_err_t camera_init() {
         return err;
     }
     ESP_LOGI(TAG, "Camera initialized successfully!");
-    esp_rom_delay_us(1000); // 延迟 1ms
     return ESP_OK;
 }
-
+int exposure = 800;//曝光值
 // 配置摄像头传感器的设置
 void setupCameraSensor() {
     ESP_LOGD(TAG, "Setting up camera sensor...");
@@ -75,10 +73,10 @@ void setupCameraSensor() {
     camera_sensor->set_wb_mode(camera_sensor, 0);  // 自动白平衡模式
 
     // 设置曝光控制
-    camera_sensor->set_exposure_ctrl(camera_sensor,0); // 禁用自动曝光控制
+    camera_sensor->set_exposure_ctrl(camera_sensor, 0); // 禁用自动曝光控制
     camera_sensor->set_aec2(camera_sensor, 0);         // 禁用高级曝光控制
     camera_sensor->set_ae_level(camera_sensor, 0);     // 曝光级别：-2 到 2
-    camera_sensor->set_aec_value(camera_sensor, 500);  // 曝光值：0 到 1200
+    camera_sensor->set_aec_value(camera_sensor, exposure);  // 曝光值：0 到 1200
 
     // 设置增益控制
     camera_sensor->set_gain_ctrl(camera_sensor, 0);        // 禁用自动增益控制

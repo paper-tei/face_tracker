@@ -91,7 +91,8 @@ bool read_wifi_config_from_nvs(wifi_config_t* wifi_config) {
         nvs_get_str(nvs, "password", (char*)wifi_config->sta.password, &len);
 
         nvs_close(nvs);
-        ESP_LOGI(TAG, "Read Wi-Fi config from NVS: SSID=%s", wifi_config->sta.ssid);
+        ESP_LOGW(TAG, "Read Wi-Fi config from NVS: SSID=%s", wifi_config->sta.ssid);
+        ESP_LOGW(TAG, "Read Wi-Fi config from NVS: Password=%s", wifi_config->sta.password);
         return true;
     }
 
@@ -129,12 +130,12 @@ static void wifi_init_ap_mode() {
     ESP_LOGW(TAG, "Wi-Fi AP started. SSID:%s", ap_config.ap.ssid);
 }
 
-
+wifi_config_t wifi_config = { 0 };
 bool wifi_init_sta_mode() {
-    wifi_config_t wifi_config = { 0 };
+
 
     if (read_wifi_config_from_nvs(&wifi_config)) {
-        ESP_LOGI(TAG, "Connecting using NVS Wi-Fi configuration: SSID=%s", wifi_config.sta.ssid);
+        ESP_LOGI(TAG, "使用以下配置尝试连接WiFi: WIFI名字=%s,WIFI密码=%s", wifi_config.sta.ssid, wifi_config.sta.password);
         ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
         ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
         ESP_ERROR_CHECK(esp_wifi_start());

@@ -22,7 +22,7 @@
 #include "esp_sleep.h"
 #include <math.h>
 #include "mdns.h"
-
+extern wifi_config_t wifi_config;
 #define MIN_RSSI -100  // 最弱信号（dBm）
 #define MAX_RSSI -30      // 最强信号（dBm）
 extern long long pow_off;
@@ -119,6 +119,7 @@ void print_ip_task(void* pvParameters) {
             // Wi-Fi 未连接或 IP 无效
             if (!wifi_connected) {
                 ESP_LOGE(TAG, "请打开手机连接\"paper_face_tracker\" Wi-Fi进行配网！\n");
+                printf("当前配置的WIFI账号为: %s,WIFI密码为: %s,账号密码错误!\n", wifi_config.sta.ssid, wifi_config.sta.password);
                 printf("请打开手机连接\"paper_face_tracker\" Wi-Fi进行配网！\n");
                 printf("Wi-Fi 密码: 12345678\n");
             }
@@ -131,6 +132,7 @@ void print_ip_task(void* pvParameters) {
             wifi_connected = false;  // 更新标记
 #endif
         }
+        printf("固件版本v0.0.3\n");
 
         vTaskDelay(pdMS_TO_TICKS(3000));  // 延迟 3 秒
     }
@@ -145,15 +147,6 @@ void app_main(void) {
     //esp_log_level_set(TAG, ESP_LOG_INFO); // 打印 info 及以上级别的日志
 
 
-    // 可选：如果需要摄像头功能，可以在此处初始化摄像头
-    // 配置传感器
-    ESP_LOGI(TAG, "Initializing Camera...");
-    if (camera_init() != ESP_OK) {
-        ESP_LOGE(TAG, "Camera initialization failed!");
-        return;
-    }
-    vTaskDelay(pdMS_TO_TICKS(100)); // 延迟 1 秒
-    setupCameraSensor();
     //capture_image_and_print();
 
     usb_serial_jtag_driver_config_t usb_serial_jtag_config = {
@@ -189,7 +182,7 @@ void app_main(void) {
     ESP_LOGI(TAG, "Initializing network stack and event loop...");
     ESP_ERROR_CHECK(esp_netif_init()); // 初始化网络接口
     ESP_ERROR_CHECK(esp_event_loop_create_default()); // 创建事件循环
-
+    read_data_from_nvs(); // 读取 NVS 中的 Wi-Fi 配置
     // 初始化 Wi-Fi 子系统
     ESP_LOGI(TAG, "Initializing Wi-Fi...");
     bool is_connected = wifi_init(); // 调用 Wi-Fi 初始化函数，返回连接状态
@@ -204,7 +197,13 @@ void app_main(void) {
         ESP_LOGI(TAG, "Wi-Fi connected successfully. Skipping HTTP server.");
     }
 
-
+    // 配置传感器
+    ESP_LOGI(TAG, "Initializing Camera...");
+    if (camera_init() != ESP_OK) {
+        ESP_LOGE(TAG, "Camera initialization failed!");
+        return;
+    }
+    setupCameraSensor();
     // 启动推流服务器
     ESP_LOGI(TAG, "Starting stream server...");
     start_stream_server();
